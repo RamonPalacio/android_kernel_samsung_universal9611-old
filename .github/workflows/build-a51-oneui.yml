@@ -1,0 +1,43 @@
+name: build-a51-oneui
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bison flex libssl-dev python3 python-is-python3 libarchive-tools
+
+      - name: Setup toolchain
+        run: |
+          mkdir -p toolchain
+          cd toolchain
+          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S=05012024
+          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") --patch=glibc
+
+      - name: Build kernel
+        run: python build_kernel.py --target=a51 --oneui --no-ksu
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: grass-a51-oneui-noksu
+          path: |
+            out/arch/arm64/boot/Image
+            Grass*.zip
+            scripts/packaging/*.zip
