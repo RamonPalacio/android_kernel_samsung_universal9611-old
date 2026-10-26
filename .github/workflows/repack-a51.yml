@@ -1,0 +1,38 @@
+name: repack-a51
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static unzip
+
+      - name: Download inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.0 --repo ${{ github.repository }} --pattern '*' --dir .
+          ls -l
+
+      - name: Repack boot with Grass kernel
+        run: |
+          unzip -o GrassKernel_a51_OneUI_2026-10-26.zip tools/magiskboot
+          chmod +x tools/magiskboot
+          qemu-arm-static tools/magiskboot unpack -h boot_stock.img
+          ls -l
+          cp Image kernel
+          qemu-arm-static tools/magiskboot repack boot_stock.img new_boot.img
+          ls -l new_boot.img
+          qemu-arm-static tools/magiskboot verify new_boot.img || true
+
+      - name: Upload boot
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-a51-grass
+          path: new_boot.img
