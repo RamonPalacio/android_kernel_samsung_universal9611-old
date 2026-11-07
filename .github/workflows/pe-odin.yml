@@ -1,0 +1,52 @@
+name: pe-odin
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-sdk-mkbootimg android-sdk-libsparse-utils
+          which lpmake || (echo "lpmake NO disponible"; exit 1)
+          lpmake --help 2>&1 | head -5 || true
+
+      - name: Download images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v3.0 --repo ${{ github.repository }} --pattern '*' --dir .
+          ls -l
+
+      - name: Build super.img
+        run: |
+          SZ=$(cat super_size.txt)
+          echo "super device size: $SZ"
+          lpmake \
+            --metadata-size 65536 \
+            --metadata-slots 2 \
+            --device super \
+            --device-size "$SZ" \
+            --group samsung_dynamic_partitions --maximum-size 6832521216 \
+            --partition system:readonly --group samsung_dynamic_partitions --size 1452957696 --image system.raw \
+            --partition vendor:readonly --group samsung_dynamic_partitions --size 280027136 --image vendor.raw \
+            --partition product:readonly --group samsung_dynamic_partitions --size 1672585216 --image product.raw \
+            --partition odm:readonly --group samsung_dynamic_partitions --size 897024 --image odm.raw \
+            --output super.img --sparse
+          ls -l super.img
+
+      - name: Package Odin tar
+        run: |
+          cp vbmeta_disabled.img vbmeta.img
+          tar -cf pe_odin_a51.tar super.img boot.img dtbo.img vbmeta.img
+          ls -l pe_odin_a51.tar
+
+      - name: Upload Odin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pe-odin
+          path: pe_odin_a51.tar
