@@ -1,0 +1,37 @@
+name: recovery-strings
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static unzip binutils
+
+      - name: Download inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.0 --repo ${{ github.repository }} --pattern '*' --dir .
+          ls -l
+
+      - name: Extract recovery binary and grep key paths
+        run: |
+          unzip -o GrassKernel_a51_OneUI_2026-10-26.zip tools/magiskboot
+          chmod +x tools/magiskboot
+          qemu-arm-static tools/magiskboot unpack stock_recovery.img
+          echo '=== ramdisk entries ==='
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio ls
+          mkdir -p ext
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "extract sbin/recovery ext/recovery_bin" || \
+            qemu-arm-static tools/magiskboot cpio ramdisk.cpio "extract system/bin/recovery ext/recovery_bin" || true
+          ls -l ext/
+          echo '=== strings: key paths ==='
+          strings -a ext/recovery_bin | grep -iE "res/keys|otacerts|/etc/security|verity_key|/system/etc|load_keys" | sort -u
+          echo '=== strings: verify related ==='
+          strings -a ext/recovery_bin | grep -iE "whole-file|signature|SignApk|verify" | sort -u | head -40
