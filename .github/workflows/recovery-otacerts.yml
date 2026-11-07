@@ -1,0 +1,56 @@
+name: recovery-otacerts
+
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static unzip openssl
+
+      - name: Download inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.0 --repo ${{ github.repository }} --pattern '*' --dir .
+          ls -l
+
+      - name: Build otacerts.zip
+        run: |
+          openssl x509 -in otacert.pem -outform DER -out otacert.der
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('otacerts.zip', 'w', zipfile.ZIP_STORED) as z:
+              z.write('otacert.pem', 'x509.pem')
+              z.write('otacert.der', 'x509.der')
+          print('otacerts.zip listo')
+          PY
+          unzip -l otacerts.zip
+
+      - name: Patch stock recovery with otacerts
+        run: |
+          unzip -o GrassKernel_a51_OneUI_2026-10-26.zip tools/magiskboot
+          chmod +x tools/magiskboot
+          qemu-arm-static tools/magiskboot unpack stock_recovery.img
+          cp otacert.pem res_keys_new.pem
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "add 644 res/keys res_keys_new.pem"
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "mkdir 755 system"
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "mkdir 755 system/etc"
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "mkdir 755 system/etc/security"
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "add 644 system/etc/security/otacerts.zip otacerts.zip"
+          echo '=== ramdisk final ==='
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "ls system/etc/security"
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "ls res"
+          qemu-arm-static tools/magiskboot repack stock_recovery.img recovery_otacerts.img
+          ls -l recovery_otacerts.img
+
+      - name: Upload patched recovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-otacerts
+          path: recovery_otacerts.img
