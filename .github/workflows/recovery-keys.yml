@@ -1,0 +1,41 @@
+name: recovery-keys
+
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static unzip
+
+      - name: Download inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.0 --repo ${{ github.repository }} --pattern '*' --dir .
+          ls -l
+
+      - name: Patch stock recovery keys
+        run: |
+          unzip -o GrassKernel_a51_OneUI_2026-10-26.zip tools/magiskboot
+          chmod +x tools/magiskboot
+          qemu-arm-static tools/magiskboot unpack stock_recovery.img
+          echo '--- ramdisk res ---'
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "ls res"
+          cp otacert.pem res_keys_new.pem
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "add 644 res/keys res_keys_new.pem"
+          echo '--- keys tras parche ---'
+          qemu-arm-static tools/magiskboot cpio ramdisk.cpio "ls res"
+          qemu-arm-static tools/magiskboot repack stock_recovery.img recovery_keys.img
+          ls -l recovery_keys.img
+
+      - name: Upload patched recovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-keys
+          path: recovery_keys.img
