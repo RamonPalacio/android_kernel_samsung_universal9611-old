@@ -1,0 +1,48 @@
+name: repack-orangefox2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static unzip
+
+      - name: Download inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.0 --repo ${{ github.repository }} --pattern '*' --dir .
+          ls -l
+
+      - name: Unpack stock and OrangeFox
+        run: |
+          unzip -o GrassKernel_a51_OneUI_2026-10-26.zip tools/magiskboot
+          chmod +x tools/magiskboot
+          mkdir -p stock of
+          (cd stock && qemu-arm-static ../tools/magiskboot unpack -h ../stock_recovery.img)
+          (cd of && qemu-arm-static ../tools/magiskboot unpack -h ../orangefox_recovery.img)
+          echo '--- stock ---'; ls -l stock
+          echo '--- of ---'; ls -l of
+
+      - name: Repack OrangeFox with stock header/AVB
+        run: |
+          cp of/kernel stock/kernel
+          if [ -f of/ramdisk.cpio ]; then cp of/ramdisk.cpio stock/ramdisk.cpio; fi
+          if [ -f of/ramdisk.cpio.gz ]; then cp of/ramdisk.cpio.gz stock/ramdisk.cpio.gz; fi
+          if [ -f of/second ]; then cp of/second stock/second; fi
+          if [ -f of/dtb ]; then cp of/dtb stock/dtb; fi
+          cd stock
+          qemu-arm-static ../tools/magiskboot repack ../stock_recovery.img ../orangefox_avb.img
+          ls -l ../orangefox_avb.img
+
+      - name: Upload repacked recovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: orangefox-avb
+          path: orangefox_avb.img
