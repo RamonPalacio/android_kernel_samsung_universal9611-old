@@ -1,0 +1,37 @@
+name: recovery-cpio
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static unzip
+
+      - name: Download inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.0 --repo ${{ github.repository }} --pattern '*' --dir .
+          ls -l
+
+      - name: Repack with patched ramdisk
+        run: |
+          unzip -o GrassKernel_a51_OneUI_2026-10-26.zip tools/magiskboot
+          chmod +x tools/magiskboot
+          qemu-arm-static tools/magiskboot unpack stock_recovery.img
+          ls -l
+          cp patched_ramdisk.cpio ramdisk.cpio
+          qemu-arm-static tools/magiskboot repack stock_recovery.img recovery_cpio.img
+          ls -l recovery_cpio.img
+
+      - name: Upload recovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-cpio
+          path: recovery_cpio.img
